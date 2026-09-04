@@ -1,23 +1,80 @@
-"""FastAPI backend application factory and service entrypoint."""
+import logging
+import time
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.router import api_router
+from app.core.config import settings
+from app.core.logging import setup_logging
+
+setup_logging(settings.LOG_LEVEL)
+logger = logging.getLogger("swasthya.api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    logger.info(
+        f"Starting {settings.PROJECT_NAME} [{settings.ENVIRONMENT}]",
+        extra={"environment": settings.ENVIRONMENT, "version": settings.VERSION},
+    )
+    yield
+    logger.info(f"Shutting down {settings.PROJECT_NAME}")
+
+
 app = FastAPI(
-    title="SwasthyaSetu API",
-    description="Backend services and data pipelines for SwasthyaSetu healthcare ecosystem.",
-    version="0.1.0",
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    docs_url=f"{settings.API_V1_STR}/docs",
+    redoc_url=f"{settings.API_V1_STR}/redoc",
+    lifespan=lifespan,
 )
 
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# Structured Request Logging Middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next) -> Response:
+    start_time = time.perf_counter()
+    client_host = request.client.host if request.client else "unknown"
+
+    response = await call_next(request)
+
+    # Skip logging frequent health checks to avoid log spam
+    if request.url.path == "/health":
+        return response
+
+    process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    logger.info(
+        f"{request.method} {request.url.path} - {response.status_code}",
+        extra={
+            "http_method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": process_time_ms,
+            "client_ip": client_host,
+        },
+    )
+    return response
+
+
+
+# Root health check endpoint (used by container healthcheck orchestrators)
 @app.get("/health", tags=["Health"])
-async def health_check() -> dict[str, str]:
+async def root_health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Mount versioned API routes
+app.include_router(api_router, prefix=settings.API_V1_STR)

@@ -18,3 +18,17 @@ Or directly with uvicorn:
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
+
+## Database Migrations (Alembic)
+Run migrations through the backend container or locally:
+```bash
+# Create a new migration revision
+docker compose exec backend alembic revision --autogenerate -m "migration_description"
+
+# Apply pending migrations
+docker compose exec backend alembic upgrade head
+
+# Check current migration status
+docker compose exec backend alembic current
+```
+

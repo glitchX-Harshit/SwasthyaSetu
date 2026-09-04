@@ -16,10 +16,7 @@ logger = logging.getLogger("swasthya.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    logger.info(
-        f"Starting {settings.PROJECT_NAME} [{settings.ENVIRONMENT}]",
-        extra={"environment": settings.ENVIRONMENT, "version": settings.VERSION},
-    )
+    logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
     yield
     logger.info(f"Shutting down {settings.PROJECT_NAME}")
 
@@ -57,14 +54,7 @@ async def log_requests(request: Request, call_next) -> Response:
 
     process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
     logger.info(
-        f"{request.method} {request.url.path} - {response.status_code}",
-        extra={
-            "http_method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "duration_ms": process_time_ms,
-            "client_ip": client_host,
-        },
+        f"{client_host} - \"{request.method} {request.url.path}\" {response.status_code} ({process_time_ms}ms)"
     )
     return response
 

@@ -1,35 +1,5 @@
-import json
 import logging
 import sys
-from datetime import datetime, timezone
-from typing import Any, Dict
-
-
-class StructuredJSONFormatter(logging.Formatter):
-    """JSON formatter emitting machine-readable structured logs."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        log_obj: Dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-
-        if record.exc_info:
-            log_obj["exception"] = self.formatException(record.exc_info)
-
-        # Include custom extra fields if attached to log record
-        for key, value in record.__dict__.items():
-            if key not in (
-                "args", "asctime", "created", "exc_info", "exc_text", "filename",
-                "funcName", "id", "levelname", "levelno", "lineno", "module",
-                "msecs", "message", "msg", "name", "pathname", "process",
-                "processName", "relativeCreated", "stack_info", "thread", "threadName"
-            ):
-                log_obj[key] = value
-
-        return json.dumps(log_obj)
 
 
 class EndpointFilter(logging.Filter):
@@ -39,7 +9,7 @@ class EndpointFilter(logging.Filter):
 
 
 def setup_logging(log_level: str = "INFO") -> None:
-    """Configures root and application loggers with structured output."""
+    """Configures root and application loggers with readable text output."""
     root_logger = logging.getLogger()
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     root_logger.setLevel(numeric_level)
@@ -49,7 +19,12 @@ def setup_logging(log_level: str = "INFO") -> None:
         root_logger.removeHandler(handler)
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(StructuredJSONFormatter())
+    # Clean, human-readable format
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s", 
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    handler.setFormatter(formatter)
     root_logger.addHandler(handler)
 
     # Align uvicorn and fastapi loggers
@@ -60,4 +35,3 @@ def setup_logging(log_level: str = "INFO") -> None:
 
     # Suppress verbose uvicorn access logs for the /health endpoint
     logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
-

@@ -12,15 +12,19 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-swasthya_user} -d ${POSTGRES_DB:-swasthya_db}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-swasthya_user} -d $${POSTGRES_DB:-swasthya_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 5s
+    networks:
+      - swasthyasetu-network
 
   redis:
     image: redis:7-alpine
     container_name: swasthyasetu-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -30,6 +34,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 5s
+    networks:
+      - swasthyasetu-network
 
   backend:
     build:
@@ -37,33 +44,37 @@ services:
       dockerfile: Dockerfile
     container_name: swasthyasetu-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://swasthya_user:swasthya_password@postgres:5432/swasthya_db}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-
-  facility-dashboard:
-    build:
-      context: ./apps/facility-dashboard
-      dockerfile: Dockerfile
-    container_name: swasthyasetu-dashboard
-    restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - swasthyasetu-network
 
 volumes:
   postgres_data:
+    name: swasthyasetu_postgres_data
   redis_data:
+    name: swasthyasetu_redis_data
+
+networks:
+  swasthyasetu-network:
+    name: swasthyasetu_network
+    driver: bridge
